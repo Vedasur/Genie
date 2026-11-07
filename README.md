@@ -84,6 +84,7 @@ Genie/
 ├── librechat/              # LibreChat config mounts
 ├── .cursor/                # AI agent guidance: RULES.md, SKILLS.md
 ├── docker-compose.yml
+├── Makefile                # `make sync` rebuilds api and mcp (runs uv sync)
 ├── .env.example
 ├── README.md
 └── DEVELOPMENT.md
@@ -124,13 +125,21 @@ Genie/
    LANGFUSE_TRACING_ENVIRONMENT=live-prod
    ```
 
-3. Launch everything:
+3. Install the locked dependencies for both application images. This rebuilds `api` and `mcp`; each Dockerfile runs `uv sync --locked`.
+
+   ```bash
+   make sync
+   ```
+
+   `make sync-api` and `make sync-mcp` rebuild one image.
+
+4. Launch everything:
 
    ```bash
    docker compose up --build
    ```
 
-4. The agent is available at:
+5. The agent is available at:
 
    ```
    http://localhost:8000/v1/chat/completions
