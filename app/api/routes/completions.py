@@ -8,11 +8,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessageChunk
 from loguru import logger
 
-from agents.genie_graph import llm
+from agents.title_llm import title_llm
+from core.config import Settings
 from core.langfuse_client import build_trace_config
 from schemas.title import TitleOutput
 from utils.logger import setup_logging
 from utils.sse import base_chunk, build_inputs, extract_text
+
+_settings = Settings()
 
 setup_logging()
 
@@ -93,18 +96,18 @@ def _clean_title(raw: str | None) -> str:
     return title
 
 
-async def _generate_title(question: str, *, cid: str, model: str,
+async def _generate_title(question: str, *, cid: str,
                           user_id: str | None, session_id: str | None) -> str:
     config = build_trace_config(
         cid=cid,
-        model=model,
+        model=_settings.title_model_name,
         stream=False,
         user_id=user_id,
         session_id=session_id,
         run_name="genie-title",
     )
     try:
-        title_result = await llm.with_structured_output(TitleOutput).ainvoke(
+        title_result = await title_llm.with_structured_output(TitleOutput).ainvoke(
             TITLE_PROMPT.format(question=question),
             config=config,
         )
@@ -181,7 +184,6 @@ async def completions(req: Request):
         title = await _generate_title(
             title_question,
             cid=cid,
-            model=model,
             user_id=user_id,
             session_id=session_id,
         )

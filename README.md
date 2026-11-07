@@ -152,6 +152,7 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `MODEL_NAME` | yes | Chat model used by the agent |
+| `TITLE_MODEL_NAME` | no | Model used for conversation titles (default `gpt-5.6-luna`). Independent of the request `model` and of `MODEL_NAME`. |
 | `OPENAI_API_KEY` | yes | Provider API key for the chat model |
 | `MCP_SERVER_URL` | yes | MCP streamable HTTP URL (Compose: `http://mcp:8080/mcp`) |
 | `TAVILY_API_KEY` | yes | Web search tool |
@@ -170,7 +171,7 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/models` | List accessible models |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat (streaming + non-streaming). Title requests use the `TITLE_REQUEST::` marker and are answered with a fast single-LLM call (JSON or SSE), not the full agent graph. |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible chat (streaming + non-streaming). Title requests use the `TITLE_REQUEST::` marker and are answered with a dedicated Luna title LLM (`TITLE_MODEL_NAME`, JSON or SSE), not the full agent graph and not the request `model`. |
 
 ## Frontend / client features
 
@@ -179,8 +180,10 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 - Conversation title generation for LibreChat (`titleTiming: immediate`). The sidebar
   title is requested in parallel with the first answer from the user's message alone.
   LibreChat sends `TITLE_REQUEST::{convo}` via `titlePrompt`; Genie detects the marker
-  anywhere in the last message, cleans the result (no quotes/trailing punctuation), and
-  falls back to `Genie Conversation` if generation fails.
+  anywhere in the last message, generates the title with a dedicated `title_llm`
+  (`TITLE_MODEL_NAME`, default Luna) that ignores the request model name, cleans the
+  result (no quotes/trailing punctuation), and falls back to `Genie Conversation` if
+  generation fails.
 - Langfuse sessions per LibreChat conversation. The session id is read from the request body
   (`session_id`, `conversation_id`, `thread_id`) or, as a fallback, from the `X-Conversation-Id`
   header; the user id comes from `user` or `X-User-Id`. The `genie-agent` endpoint in
