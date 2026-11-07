@@ -18,7 +18,7 @@ PROMPT_NAMES = (
     ("writer", "writer-synth-prompt"),
     ("title", "title-prompt"),
 )
-PROMPT_LABEL = "production"
+PROMPT_VERSION = "production"
 
 
 @dataclass(frozen=True)
@@ -76,18 +76,18 @@ def load_chat_prompt(client: Langfuse, name: str) -> ChatPromptTemplate:
     logger.info(
         "Loading Langfuse chat prompt name={} label={}",
         name,
-        PROMPT_LABEL,
+        PROMPT_VERSION,
     )
     try:
         langfuse_prompt = client.get_prompt(
             name,
             type="chat",
-            label=PROMPT_LABEL,
+            label=PROMPT_VERSION,
         )
     except Exception as exc:  # noqa: BLE001 — fail fast with prompt context
         raise LangfusePromptError(
             f"Failed to load Langfuse prompt '{name}' "
-            f"with label '{PROMPT_LABEL}': {exc}"
+            f"with label '{PROMPT_VERSION}': {exc}"
         ) from exc
 
     if getattr(langfuse_prompt, "is_fallback", False):

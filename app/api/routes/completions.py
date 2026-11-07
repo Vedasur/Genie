@@ -196,10 +196,12 @@ async def completions(req: Request):
 
     try:
         inputs = build_inputs(messages)
+        logger.info(f"[{cid}] inputs: {inputs}")
+
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": {"message": str(exc)}})
 
-    logger.info(f"[{cid}] question={inputs['question']!r} history_len={len(inputs['chat_history'])}")
+    logger.info(f"[{cid}] question={inputs['question']!r} history={inputs['chat_history']}")
 
     config = build_trace_config(
         cid=cid,

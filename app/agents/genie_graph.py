@@ -116,7 +116,6 @@ async def build_agent_graph(prompts: PromptBundle):
                 # Keep the existing Langfuse variable name while treating it
                 # as a total tool-call ceiling in the researcher prompt.
                 "MAX_SEARCHES": MAX_RESEARCH_TOOL_CALLS,
-                "question": state.question,
                 "bullets": bullets,
             }).to_messages()
         convo = [*history, *seed]
@@ -158,8 +157,10 @@ async def build_agent_graph(prompts: PromptBundle):
         emit_status(status, "✍️ Writing the answer...")
         notes = state.notes or "(no research was performed)"
         formatted_prompt = prompts.writer.invoke({
+            "chat_history": state.chat_history,
             "notes": notes,
             "question": state.question,
+
         })
         reporter_response = llm.invoke(formatted_prompt)
         return {"answer": reporter_response.text}
