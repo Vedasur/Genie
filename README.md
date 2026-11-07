@@ -98,13 +98,14 @@ Genie/
   - `planner-prompt`
   - `researcher-prompt`
   - `writer-synth-prompt`
+  - `title-prompt` (variable: `question`)
   Assign the `production` label to the version of each prompt that Genie should use.
   Startup always fetches that labeled version and fails if it is unavailable.
   
   Preserve the same template variables used previously in LangSmith Hub (for example
   `date`, `chat_history`, `question`, `MAX_SEARCHES`, `bullets`, `notes`). For backward
   compatibility, `MAX_SEARCHES` now represents the researcher's total tool-call ceiling,
-  including both web searches and page scrapes.
+  including both web searches and page scrapes. The title prompt only needs `question`.
 
 ## Setup
 
@@ -180,10 +181,10 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 - Conversation title generation for LibreChat (`titleTiming: immediate`). The sidebar
   title is requested in parallel with the first answer from the user's message alone.
   LibreChat sends `TITLE_REQUEST::{convo}` via `titlePrompt`; Genie detects the marker
-  anywhere in the last message, generates the title with a dedicated `title_llm`
-  (`TITLE_MODEL_NAME`, default Luna) that ignores the request model name, cleans the
-  result (no quotes/trailing punctuation), and falls back to `Genie Conversation` if
-  generation fails.
+  anywhere in the last message, formats the Langfuse `title-prompt` with `question`,
+  generates the title with a dedicated `title_llm` (`TITLE_MODEL_NAME`, default Luna)
+  that ignores the request model name, cleans the result (no quotes/trailing
+  punctuation), and falls back to `Genie Conversation` if generation fails.
 - Langfuse sessions per LibreChat conversation. The session id is read from the request body
   (`session_id`, `conversation_id`, `thread_id`) or, as a fallback, from the `X-Conversation-Id`
   header; the user id comes from `user` or `X-User-Id`. The `genie-agent` endpoint in

@@ -16,6 +16,7 @@ PROMPT_NAMES = (
     ("planner", "planner-prompt"),
     ("researcher", "researcher-prompt"),
     ("writer", "writer-synth-prompt"),
+    ("title", "title-prompt"),
 )
 PROMPT_LABEL = "production"
 
@@ -27,6 +28,7 @@ class PromptBundle:
     planner: ChatPromptTemplate
     researcher: ChatPromptTemplate
     writer: ChatPromptTemplate
+    title: ChatPromptTemplate
 
 
 class LangfusePromptError(RuntimeError):
