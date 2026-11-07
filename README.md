@@ -84,6 +84,7 @@ Genie/
 ├── librechat/              # LibreChat config mounts
 ├── .cursor/                # AI agent guidance: RULES.md, SKILLS.md
 ├── docker-compose.yml
+├── Makefile                # `make sync` rebuilds api and mcp (runs uv sync)
 ├── .env.example
 ├── README.md
 └── DEVELOPMENT.md
@@ -124,13 +125,21 @@ Genie/
    LANGFUSE_TRACING_ENVIRONMENT=live-prod
    ```
 
-3. Launch everything:
+3. Install the locked dependencies for both application images. This rebuilds `api` and `mcp`; each Dockerfile runs `uv sync --locked`.
+
+   ```bash
+   make sync
+   ```
+
+   `make sync-api` and `make sync-mcp` rebuild one image.
+
+4. Launch everything:
 
    ```bash
    docker compose up --build
    ```
 
-4. The agent is available at:
+5. The agent is available at:
 
    ```
    http://localhost:8000/v1/chat/completions
@@ -237,7 +246,8 @@ docker compose down
   Missing credentials, unreachable Langfuse, missing chat prompts, or missing `production`
   labels cause startup to fail fast.
 - Trace export is best-effort and must not turn a successful completion into an API error; pending events are flushed on shutdown.
-- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. The workflow fails the image on HIGH or CRITICAL findings that already have a vendor fix.
+- Pull requests run `.github/workflows/sec-ops.yaml`, which builds both images and scans them with `aquasecurity/trivy-action@master`. The job is named `Trivy`. Require that check in a branch ruleset so a pull request cannot merge when the scan finds a HIGH or CRITICAL vulnerability that already has a vendor fix.
+- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. That workflow uses the same Trivy action and the same severity bar.
 - `Dockerfile-api` and `Dockerfile-mcp` run `apt-get upgrade` on `python:3.12-slim` so Debian security updates (currently OpenSSL `3.5.7-1~deb13u3` and PCRE2 `10.46-1~deb13u3`) are applied before that scan.
 
 ## Recent changes
