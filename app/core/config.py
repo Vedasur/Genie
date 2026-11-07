@@ -7,6 +7,10 @@ class Settings(BaseSettings):
 
     accessible_models: list[str] = Field(default_factory=list)
     model_name: str = Field(..., description="LLM used by the Genie Agent")
+    title_model_name: str = Field(
+        "gpt-5.6-luna",
+        description="LLM used for conversation titles",
+    )
     mcp_server_url: str
 
     langfuse_public_key: str = Field(..., description="Langfuse project public key")

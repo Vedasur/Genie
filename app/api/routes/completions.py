@@ -6,26 +6,23 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessageChunk
+from langchain_core.prompts import ChatPromptTemplate
 from loguru import logger
 
-from agents.genie_graph import llm
+from agents.title_llm import title_llm
+from core.config import Settings
 from core.langfuse_client import build_trace_config
-from schemas.title import TitleOutput
 from utils.logger import setup_logging
 from utils.sse import base_chunk, build_inputs, extract_text
+
+_settings = Settings()
 
 setup_logging()
 
 ANSWER_NODE = "writer"
 DEFAULT_MODEL = "Genie"
 TITLE_MARKER = "TITLE_REQUEST::"
-FALLBACK_TITLE = TitleOutput.model_fields["title"].default
-TITLE_PROMPT = (
-    "Summarize this question into a short, 3-6 word conversation title. "
-    "Use the same language as the question. "
-    "Reply with the title only — no quotes and no trailing punctuation.\n\n"
-    "{question}"
-)
+FALLBACK_TITLE = "Genie Conversation"    
 MAX_TITLE_LEN = 80
 
 router = APIRouter()
@@ -93,22 +90,30 @@ def _clean_title(raw: str | None) -> str:
     return title
 
 
-async def _generate_title(question: str, *, cid: str, model: str,
-                          user_id: str | None, session_id: str | None) -> str:
+async def _generate_title(
+    question: str,
+    *,
+    prompt: ChatPromptTemplate,
+    cid: str,
+    user_id: str | None,
+    session_id: str | None,
+) -> str:
     config = build_trace_config(
         cid=cid,
-        model=model,
+        model=_settings.title_model_name,
         stream=False,
         user_id=user_id,
         session_id=session_id,
         run_name="genie-title",
     )
     try:
-        title_result = await llm.with_structured_output(TitleOutput).ainvoke(
-            TITLE_PROMPT.format(question=question),
+        formatted = prompt.invoke({"question": question})
+        title_result = await title_llm.ainvoke(
+            formatted,
             config=config,
         )
-        return _clean_title(getattr(title_result, "title", None))
+        logger.debug(f"[{cid}] Title result: {title_result.content}")
+        return _clean_title(title_result.content)
     except Exception:
         logger.exception(f"[{cid}] Title generation failed; using fallback")
         return FALLBACK_TITLE
@@ -180,8 +185,8 @@ async def completions(req: Request):
         logger.info(f"[{cid}] title request question={title_question!r} stream={stream}")
         title = await _generate_title(
             title_question,
+            prompt=req.app.state.prompts.title,
             cid=cid,
-            model=model,
             user_id=user_id,
             session_id=session_id,
         )
@@ -191,10 +196,12 @@ async def completions(req: Request):
 
     try:
         inputs = build_inputs(messages)
+        logger.info(f"[{cid}] inputs: {inputs}")
+
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": {"message": str(exc)}})
 
-    logger.info(f"[{cid}] question={inputs['question']!r} history_len={len(inputs['chat_history'])}")
+    logger.info(f"[{cid}] question={inputs['question']!r} history={inputs['chat_history']}")
 
     config = build_trace_config(
         cid=cid,

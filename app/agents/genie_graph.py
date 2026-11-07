@@ -68,23 +68,6 @@ def web_search(query:str)->str:
         )
     return "\n\n".join(chunks) if chunks else "No results found."
 
-#MCP tools
-_mcp_client = MultiServerMCPClient(
-    {
-        "deep_search": {
-            "transport": "streamable_http",
-            "url": settings.mcp_server_url,
-        },
-    }
-)
-_mcp_tools_cache: list | None = None
-async def get_tools() -> list:
-    """Returns the full tool list, lazily fetching MCP tools once and caching them."""
-    global _mcp_tools_cache
-    if _mcp_tools_cache is None:
-        _mcp_tools_cache = await _mcp_client.get_tools()
-    return [web_search, *_mcp_tools_cache]
-
 # Define LLM call
 llm = ChatOpenAI(model=settings.model_name, use_responses_api=True)
 
@@ -133,7 +116,6 @@ async def build_agent_graph(prompts: PromptBundle):
                 # Keep the existing Langfuse variable name while treating it
                 # as a total tool-call ceiling in the researcher prompt.
                 "MAX_SEARCHES": MAX_RESEARCH_TOOL_CALLS,
-                "question": state.question,
                 "bullets": bullets,
             }).to_messages()
         convo = [*history, *seed]
@@ -175,8 +157,10 @@ async def build_agent_graph(prompts: PromptBundle):
         emit_status(status, "✍️ Writing the answer...")
         notes = state.notes or "(no research was performed)"
         formatted_prompt = prompts.writer.invoke({
+            "chat_history": state.chat_history,
             "notes": notes,
             "question": state.question,
+
         })
         reporter_response = llm.invoke(formatted_prompt)
         return {"answer": reporter_response.text}

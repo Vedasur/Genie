@@ -16,3 +16,4 @@ mongo-data/*
 /tests/*
 /DEVELOPMENT.md
 pytest.ini
+.cursorignore
