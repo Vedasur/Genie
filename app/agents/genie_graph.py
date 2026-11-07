@@ -68,23 +68,6 @@ def web_search(query:str)->str:
         )
     return "\n\n".join(chunks) if chunks else "No results found."
 
-#MCP tools
-_mcp_client = MultiServerMCPClient(
-    {
-        "deep_search": {
-            "transport": "streamable_http",
-            "url": settings.mcp_server_url,
-        },
-    }
-)
-_mcp_tools_cache: list | None = None
-async def get_tools() -> list:
-    """Returns the full tool list, lazily fetching MCP tools once and caching them."""
-    global _mcp_tools_cache
-    if _mcp_tools_cache is None:
-        _mcp_tools_cache = await _mcp_client.get_tools()
-    return [web_search, *_mcp_tools_cache]
-
 # Define LLM call
 llm = ChatOpenAI(model=settings.model_name, use_responses_api=True)
 
