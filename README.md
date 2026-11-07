@@ -237,7 +237,8 @@ docker compose down
   Missing credentials, unreachable Langfuse, missing chat prompts, or missing `production`
   labels cause startup to fail fast.
 - Trace export is best-effort and must not turn a successful completion into an API error; pending events are flushed on shutdown.
-- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. The workflow fails the image on HIGH or CRITICAL findings that already have a vendor fix.
+- Pull requests run `.github/workflows/sec-ops.yaml`, which builds both images and scans them with `aquasecurity/trivy-action@master`. The job is named `Trivy`. Require that check in a branch ruleset so a pull request cannot merge when the scan finds a HIGH or CRITICAL vulnerability that already has a vendor fix.
+- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. That workflow uses the same Trivy action and the same severity bar.
 - `Dockerfile-api` and `Dockerfile-mcp` run `apt-get upgrade` on `python:3.12-slim` so Debian security updates (currently OpenSSL `3.5.7-1~deb13u3` and PCRE2 `10.46-1~deb13u3`) are applied before that scan.
 
 ## Recent changes
