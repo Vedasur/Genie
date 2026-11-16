@@ -182,6 +182,7 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/models` | List accessible models |
 | `POST` | `/v1/chat/completions` | OpenAI-compatible chat (streaming + non-streaming). Title requests use the `TITLE_REQUEST::` marker and are answered with a dedicated Luna title LLM (`TITLE_MODEL_NAME`, JSON or SSE), not the full agent graph and not the request `model`. |
+| `POST` | `/v2/chat/completions` | **Test endpoint.** Logs the request body/headers and returns a stub reply (streaming + non-streaming). Exposed in LibreChat as the `genie-agent-v2` endpoint (model `Genie-v2`). |
 
 ## Frontend / client features
 
