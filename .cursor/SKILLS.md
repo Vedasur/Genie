@@ -50,9 +50,10 @@ docker compose up --build
 
 - API: `http://localhost:8000` (docs at `/docs`), LibreChat: `http://localhost:3080`,
   web search MCP: `http://localhost:8080/mcp`, Google MCP: `http://localhost:8081/mcp`.
-- Requires `.env` (API + LibreChat), `web_search_mcp/.web_search_mcp.env` (`FC_KEY`),
-  and for Gmail: `google_mcp/.google_mcp.env` plus `google_mcp/secrets/token.json`,
-  plus reachable Langfuse with the chat prompts.
+- Requires `.env` (API + LibreChat, including `GOOGLE_MCP_*` for Gmail OAuth),
+  `web_search_mcp/.web_search_mcp.env` (`FC_KEY`), `google_mcp/.google_mcp.env`,
+  plus reachable Langfuse with the chat prompts. Connect Gmail once in LibreChat
+  (MCP menu → `google_mcp` → Connect) before calling `read_recent_emails`.
 
 **API only, outside Docker** (web search MCP must be running and `MCP_SERVER_URL=http://localhost:8080/mcp`):
 
@@ -235,7 +236,7 @@ Follow evidence, don't guess.
    | `Search failed: ...` in research notes | Invalid/missing `TAVILY_API_KEY` |
    | MCP connection errors at startup | `web_search_mcp` not running or `MCP_SERVER_URL` wrong (`http://web_search_mcp:8080/mcp` in Compose) |
    | `scrape_link` errors | Missing/invalid `FC_KEY`, or page has no content |
-   | `google_mcp` exits on start | Missing `google_mcp/secrets/token.json` — run `gmail_auth.py` |
+   | `google_mcp` tool fails with missing Bearer token | User has not Connected Gmail in LibreChat, or `GOOGLE_MCP_*` / redirect URI is wrong |
    | Stream shows status but no answer | Answer node renamed without updating `ANSWER_NODE` |
    | 400 "No user message found" | Request has no `role: "user"` message |
 5. Fix the root cause directly, then re-run the same request to confirm it works.

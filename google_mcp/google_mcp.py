@@ -5,31 +5,21 @@ from __future__ import annotations
 import base64
 import os
 from datetime import date, datetime, timezone
-from functools import lru_cache
 from typing import Annotated
 
-from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from loguru import logger
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 from pydantic import BaseModel, Field
 
 from utils.logger import setup_logging
 
 setup_logging()
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8081"))
-TOKEN_PATH = os.environ.get("GMAIL_TOKEN_PATH", "/secrets/token.json")
 BODY_MAX_CHARS = 5000
-
-if not os.path.isfile(TOKEN_PATH):
-    raise RuntimeError(
-        f"Missing Gmail token at {TOKEN_PATH}. "
-        "Run `uv run python gmail_auth.py` in google_mcp/ to create secrets/token.json."
-    )
 
 mcp = MCPServer("Google service", version=os.environ.get("SERVICE_VERSION", "0.1.0"))
 
@@ -45,15 +35,12 @@ class EmailMessage(BaseModel):
     body: str = Field(description="Plain-text body, truncated for LLM context.")
 
 
-@lru_cache(maxsize=1)
-def get_gmail_service():
-    """Reuse a single Gmail API client; refresh and persist the token when needed."""
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
-        logger.info("Refreshed Gmail OAuth token")
+def _gmail_from_ctx(ctx: Context):
+    """Build a Gmail client from the caller's OAuth access token (sent by LibreChat)."""
+    auth = (ctx.headers or {}).get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        raise ValueError("Missing Google OAuth token; connect Gmail in LibreChat first.")
+    creds = Credentials(token=auth[7:])
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
@@ -78,6 +65,7 @@ def _extract_text(payload: dict) -> str:
 
 @mcp.tool()
 def read_recent_emails(
+    ctx: Context,
     since_date: Annotated[
         date,
         Field(
@@ -110,7 +98,7 @@ def read_recent_emails(
     """
     epoch = int(datetime(since_date.year, since_date.month, since_date.day, tzinfo=timezone.utc).timestamp())
     query = f"in:inbox after:{epoch}"
-    svc = get_gmail_service()
+    svc = _gmail_from_ctx(ctx)
 
     try:
         listing = (
@@ -120,7 +108,7 @@ def read_recent_emails(
             .execute()
         )
     except Exception:
-        logger.exception("Gmail messages.list failed for query=%s", query)
+        logger.exception("Gmail messages.list failed for query={}", query)
         raise
 
     messages = listing.get("messages") or []
@@ -137,7 +125,7 @@ def read_recent_emails(
                 .execute()
             )
         except Exception:
-            logger.exception("Gmail messages.get failed for id=%s", item.get("id"))
+            logger.exception("Gmail messages.get failed for id={}", item.get("id"))
             raise
 
         headers = msg.get("payload", {}).get("headers", [])
@@ -153,7 +141,7 @@ def read_recent_emails(
             )
         )
 
-    logger.info("read_recent_emails since=%s returned=%s", since_date.isoformat(), len(out))
+    logger.info("read_recent_emails since={} returned={}", since_date.isoformat(), len(out))
     return out
 
 
