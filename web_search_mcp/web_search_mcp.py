@@ -16,7 +16,7 @@ if not FC_KEY:
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8080"))
 
-mcp = MCPServer("Deep search service", version=os.environ.get("SERVICE_VERSION", "0.1.0"))
+mcp = MCPServer("Web search service", version=os.environ.get("SERVICE_VERSION", "0.1.0"))
 
 
 class SearchData(BaseModel):

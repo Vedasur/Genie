@@ -23,8 +23,11 @@ jobs:
         include:
           - name: genie-api
             dockerfile: Dockerfile-api
-          - name: genie-mcp
-            dockerfile: Dockerfile-mcp
+          - name: genie-web-search-mcp
+            dockerfile: Dockerfile-web-search-mcp
+          - name: genie-google-mcp
+            dockerfile: Dockerfile-google-mcp
+
 
     steps:
       - name: Checkout
@@ -141,8 +144,9 @@ jobs:
         run: |
           kustomize edit set image \
             genie-api=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/genie-api:${{ github.ref_name }} \
-            genie-mcp=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/genie-mcp:${{ github.ref_name }}
+            genie-web-search-mcp=${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/genie-web-search-mcp:${{ github.ref_name }}
           cat kustomization.yaml
+
 
       - name: Commit and push
         working-directory: gitops-repo

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "google-mcp-service"
+version = "0.1.0"
+description = "Google MCP service (Gmail read)"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "mcp>=2",
+    "starlette",
+    "loguru",
+    "uvicorn",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+]
+[tool.hatch.build.targets.wheel]
+packages = ["utils"]

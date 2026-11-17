@@ -2,3 +2,9 @@
 .gitignore
 LICENSE
 **.env
+google_mcp/credentials.json
+google_mcp/secrets/
+web_search_mcp/.venv/
+google_mcp/.venv/
+**/.venv/
+**/__pycache__/

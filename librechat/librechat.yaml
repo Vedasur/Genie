@@ -47,15 +47,24 @@ endpoints:
 
 mcpSettings:
   allowedDomains:
-    - "mcp"
+    - "web_search_mcp"
+    - "google_mcp"
 mcpServers:
-  search_mcp:
+  web_search_mcp:
     type: streamable-http          # or: sse, stdio
-    url: http://mcp:8080/mcp
+    url: http://web_search_mcp:8080/mcp
     timeout: 60000
     initTimeout: 15000
     serverInstructions: true
     chatMenu: true
+  google_mcp:
+    type: streamable-http
+    url: http://google_mcp:8081/mcp
+    timeout: 60000
+    initTimeout: 15000
+    serverInstructions: true
+    chatMenu: true
+
 
 modelSpecs:
   enforce: false

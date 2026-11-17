@@ -1,0 +1,27 @@
+FROM python:3.12-slim
+
+# The published slim tag lags Debian security updates. CI rejects HIGH/CRITICAL
+# findings that already have a fix (OpenSSL, PCRE2).
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+# uv configuration
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_DEV=1 \
+    PYTHONUNBUFFERED=1
+
+# Copy application
+COPY google_mcp/ .
+COPY utils/ ./utils/
+RUN uv sync --locked
+
+EXPOSE 8081
+
+CMD ["uv", "run", "python", "-u", "google_mcp.py"]

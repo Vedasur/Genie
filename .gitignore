@@ -17,3 +17,6 @@ mongo-data/*
 /DEVELOPMENT.md
 pytest.ini
 .cursorignore
+google_mcp/credentials.json
+google_mcp/secrets/*
+!google_mcp/secrets/.gitkeep

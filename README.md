@@ -11,7 +11,8 @@ Genie is a personal AI agent I interact with through the open-source
 The starting point is a simple **research agent** built with LangGraph
 (planner → researcher → writer). It has access to tools like
 [Tavily](https://tavily.com) (web search) and [Firecrawl](https://firecrawl.dev)
-(page scraping) through a custom MCP server in [`mcp/`](mcp/).
+(page scraping) through a custom MCP server in [`web_search_mcp/`](web_search_mcp/).
+A separate [`google_mcp/`](google_mcp/) service exposes Gmail read tools for LibreChat.
 
 The longer-term goal is to give this agent more capabilities and strengthen the
 harness around it — more tools, more MCP servers, and a more powerful agent loop —
@@ -49,8 +50,10 @@ open an issue on this repo or contact me through my GitHub profile.
   The planner uses the smallest sufficient set of 1–4 non-overlapping research questions,
   including one question for an atomic lookup. Tavily returns up to five results per search,
   and each research run stops after at most three total tool calls (searches and page scrapes).
-- **`mcp`** — a standalone MCP server exposing a `scrape_link` tool (via Firecrawl) for
-  fetching full page content as markdown. Genie connects to it over streamable HTTP.
+- **`web_search_mcp`** — a standalone MCP server exposing a `scrape_link` tool (via Firecrawl)
+  for fetching full page content as markdown. Genie connects to it over streamable HTTP.
+- **`google_mcp`** — a standalone MCP server exposing `read_recent_emails` (Gmail API,
+  `gmail.readonly`). Registered in LibreChat only; not wired into the Genie agent graph.
 - **Langfuse (external)** — self-hosted prompt management + tracing. Genie loads chat prompts
   at startup and emits per-request traces for graph, model, and tool activity.
 
@@ -62,9 +65,10 @@ open an issue on this repo or contact me through my GitHub profile.
 | FastAPI + Uvicorn | API server |
 | LangGraph / LangChain | Agent orchestration |
 | Langfuse Python SDK | Prompt management + LangChain/LangGraph callbacks |
-| Tavily + MCP/Firecrawl | Web research tools |
+| Tavily + MCP/Firecrawl | Web research tools (`web_search_mcp`) |
+| Google Gmail API | Read-only inbox tool (`google_mcp`, LibreChat) |
 | LibreChat | Optional OpenAI-compatible UI (Compose service) |
-| uv | Dependency lock/sync (`app/uv.lock`) |
+| uv | Dependency lock/sync (`app/uv.lock`, `web_search_mcp/uv.lock`, `google_mcp/uv.lock`) |
 
 ## Project structure
 
@@ -78,13 +82,17 @@ Genie/
 │   ├── main.py
 │   ├── pyproject.toml
 │   └── uv.lock
-├── mcp/                    # MCP scrape server
+├── web_search_mcp/         # Firecrawl scrape MCP (port 8080)
+├── google_mcp/             # Gmail read MCP (port 8081)
 ├── utils/                  # shared SSE/logging helpers
 ├── tests/                  # pytest suite
 ├── librechat/              # LibreChat config mounts
 ├── .cursor/                # AI agent guidance: RULES.md, SKILLS.md
 ├── docker-compose.yml
-├── Makefile                # `make sync` rebuilds api and mcp (runs uv sync)
+├── Makefile                # `make sync` rebuilds api + MCP images
+├── Dockerfile-api
+├── Dockerfile-web-search-mcp
+├── Dockerfile-google-mcp
 ├── .env.example
 ├── README.md
 └── DEVELOPMENT.md
@@ -93,7 +101,9 @@ Genie/
 ## Prerequisites
 
 - Docker & Docker Compose
-- API keys: OpenAI (or your LLM provider), Tavily, Firecrawl (`FC_KEY` for MCP)
+- API keys: OpenAI (or your LLM provider), Tavily, Firecrawl (`FC_KEY` for `web_search_mcp`)
+- For Gmail tools: Google Cloud OAuth Desktop client + a local `google_mcp/secrets/token.json`
+  (see [Google MCP (Gmail)](#google-mcp-gmail))
 - Access to a self-hosted Langfuse project (public key, secret key, base URL)
 - In Langfuse, create **chat** prompts named exactly:
   - `planner-prompt`
@@ -125,13 +135,14 @@ Genie/
    LANGFUSE_TRACING_ENVIRONMENT=live-prod
    ```
 
-3. Install the locked dependencies for both application images. This rebuilds `api` and `mcp`; each Dockerfile runs `uv sync --locked`.
+3. Install the locked dependencies for the application images. This rebuilds `api`,
+   `web_search_mcp`, and `google_mcp`; each Dockerfile runs `uv sync --locked`.
 
    ```bash
    make sync
    ```
 
-   `make sync-api` and `make sync-mcp` rebuild one image.
+   `make sync-api`, `make sync-web-search-mcp`, and `make sync-google-mcp` rebuild one image.
 
 4. Launch everything:
 
@@ -164,7 +175,7 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | `MODEL_NAME` | yes | Chat model used by the agent |
 | `TITLE_MODEL_NAME` | no | Model used for conversation titles (default `gpt-5.6-luna`). Independent of the request `model` and of `MODEL_NAME`. |
 | `OPENAI_API_KEY` | yes | Provider API key for the chat model |
-| `MCP_SERVER_URL` | yes | MCP streamable HTTP URL (Compose: `http://mcp:8080/mcp`) |
+| `MCP_SERVER_URL` | yes | Web-search MCP streamable HTTP URL (Compose: `http://web_search_mcp:8080/mcp`) |
 | `TAVILY_API_KEY` | yes | Web search tool |
 | `ACCESSIBLE_MODELS` | no | Models advertised on `/v1/models` |
 | `LOG_LEVEL` | no | Logging level (default `INFO`) |
@@ -174,6 +185,46 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | `LANGFUSE_TRACING_ENVIRONMENT` | no | Langfuse environment on every trace (default `default`; e.g. `live-prod`). Lowercase letters, digits, `-`, `_`; must not start with `langfuse` |
 
 `LANGSMITH_API_KEY` is no longer used. LangSmith may still appear transitively via LangChain.
+
+### MCP service env files
+
+| File | Variables |
+|------|-----------|
+| `web_search_mcp/.web_search_mcp.env` | `FC_KEY` (required), `MCP_HOST`, `MCP_PORT` (default `8080`), `SERVICE_VERSION` |
+| `google_mcp/.google_mcp.env` | `MCP_HOST`, `MCP_PORT` (default `8081`), `SERVICE_VERSION`, `GMAIL_TOKEN_PATH` (default `/secrets/token.json`) |
+
+Copy `google_mcp/.google_mcp.env.example` to `google_mcp/.google_mcp.env` for local Compose.
+
+## Google MCP (Gmail)
+
+`google_mcp` is an independent MCP server (port **8081**) with a single read-only tool.
+LibreChat registers it in [`librechat/librechat.yaml`](librechat/librechat.yaml); the Genie
+agent graph does **not** call it.
+
+### Tool
+
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `read_recent_emails` | `since_date` (ISO `YYYY-MM-DD`), `max_results` (1–50, default 20) | List of emails (id, sender, subject, date, snippet, truncated plain-text body) received in the inbox from that date (00:00 UTC) up to now |
+
+### One-time Google Cloud setup
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create/select a project and enable the **Gmail API**.
+2. Configure the **OAuth consent screen** (External). Add yourself as a test user.
+   Scope used: `https://www.googleapis.com/auth/gmail.readonly`.
+3. Create credentials → **OAuth client ID** → application type **Desktop app**.
+   Download the JSON and save it as `google_mcp/credentials.json` (gitignored).
+4. On your machine (opens a browser; do not run inside Docker):
+
+   ```bash
+   cd google_mcp
+   uv run python gmail_auth.py
+   ```
+
+   This writes `google_mcp/secrets/token.json`, which Compose mounts at `/secrets/token.json`.
+
+While the consent screen is in **Testing**, Google may expire the refresh token after 7 days;
+re-run `gmail_auth.py`, or set the app to **In production** for personal use (unverified-app warning is expected).
 
 ## API endpoints
 
@@ -247,9 +298,9 @@ docker compose down
   Missing credentials, unreachable Langfuse, missing chat prompts, or missing `production`
   labels cause startup to fail fast.
 - Trace export is best-effort and must not turn a successful completion into an API error; pending events are flushed on shutdown.
-- Pull requests run `.github/workflows/sec-ops.yaml`, which builds both images and scans them with `aquasecurity/trivy-action@master`. The job is named `Trivy`. Require that check in a branch ruleset so a pull request cannot merge when the scan finds a HIGH or CRITICAL vulnerability that already has a vendor fix.
-- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. That workflow uses the same Trivy action and the same severity bar.
-- `Dockerfile-api` and `Dockerfile-mcp` run `apt-get upgrade` on `python:3.12-slim` so Debian security updates (currently OpenSSL `3.5.7-1~deb13u3` and PCRE2 `10.46-1~deb13u3`) are applied before that scan.
+- Pull requests run `.github/workflows/sec-ops.yaml`, which builds `genie-api`, `genie-web-search-mcp`, and `genie-google-mcp` and scans them with `aquasecurity/trivy-action@master`. The job is named `Trivy`. Require that check in a branch ruleset so a pull request cannot merge when the scan finds a HIGH or CRITICAL vulnerability that already has a vendor fix.
+- Rebuild/push images with the existing GitHub Actions workflow when cutting a release tag. That workflow uses the same Trivy action and the same severity bar. Published images: `genie-api`, `genie-web-search-mcp`, `genie-google-mcp`. GitOps currently bumps `genie-api` and `genie-web-search-mcp` (update the external manifests if the old `genie-mcp` name is still referenced).
+- `Dockerfile-api`, `Dockerfile-web-search-mcp`, and `Dockerfile-google-mcp` run `apt-get upgrade` on `python:3.12-slim` so Debian security updates (currently OpenSSL `3.5.7-1~deb13u3` and PCRE2 `10.46-1~deb13u3`) are applied before that scan.
 
 ## Recent changes
 
