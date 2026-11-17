@@ -276,3 +276,54 @@ async def completions(req: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+@router.post("/v2/chat/completions")
+async def completions_v2(req: Request):
+    logger.info("Request received for v2 completions ...")
+
+    body = await req.json()
+    model = body.get("model") or DEFAULT_MODEL
+    messages = body.get("messages", [])
+    logger.info(f"body: {body}")
+    
+    logger.info(f"model: {model} messages: {messages}")
+    logger.info(f"headers: {dict(req.headers)}")
+
+    stream = bool(body.get("stream"))
+    cid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+    reply = "v2 endpoint reached. Check the API logs for the request body."
+
+    if not stream:
+        return JSONResponse({
+            "id": cid,
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": reply},
+            }],
+        })
+
+    async def gen():
+        created = int(time.time())
+
+        opener = base_chunk(cid, model, created)
+        opener["choices"][0]["delta"] = {"role": "assistant", "content": ""}
+        yield f"data: {json.dumps(opener)}\n\n"
+
+        evt = base_chunk(cid, model, created)
+        evt["choices"][0]["delta"] = {"content": reply}
+        yield f"data: {json.dumps(evt)}\n\n"
+
+        final = base_chunk(cid, model, created)
+        final["choices"][0]["finish_reason"] = "stop"
+        yield f"data: {json.dumps(final)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )

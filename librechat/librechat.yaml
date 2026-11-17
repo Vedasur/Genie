@@ -28,3 +28,55 @@ endpoints:
         reasoningFormat: reasoning_object
         reasoningKey: reasoning_content
         includeReasoningContent: true
+
+    # Test endpoint -> POST /v2/chat/completions (logs the request, returns a stub reply)
+    - name: "genie-agent-v2"
+      apiKey: "dummy-key"
+      baseURL: "http://api:8000/v2"
+      headers:
+        X-Conversation-Id: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+        X-User-Id: "{{LIBRECHAT_USER_ID}}"
+
+      models:
+        default: ["Genie-v2"]
+        fetch: false
+
+      modelDisplayLabel: "Genie v2 (test)"
+
+      titleConvo: false
+
+mcpSettings:
+  allowedDomains:
+    - "web_search_mcp"
+    - "google_mcp"
+mcpServers:
+  web_search_mcp:
+    type: streamable-http          # or: sse, stdio
+    url: http://web_search_mcp:8080/mcp
+    timeout: 60000
+    initTimeout: 15000
+    serverInstructions: true
+    chatMenu: true
+  google_mcp:
+    type: streamable-http
+    url: http://google_mcp:8081/mcp
+    timeout: 60000
+    initTimeout: 15000
+    serverInstructions: true
+    chatMenu: true
+
+
+modelSpecs:
+  enforce: false
+  prioritize: true
+  addedEndpoints:
+    - openAI
+    - genie-agent
+    - genie-agent-v2
+  list:
+    - name: "gpt-6.1-terra"
+      label: "GPT 6.1 Terra"
+      preset:
+        endpoint: "openAI"
+        model: "gpt-6.1-terra"
+        useResponsesApi: true

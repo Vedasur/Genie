@@ -34,19 +34,37 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-      - name: Build genie-mcp
+      - name: Build genie-web-search-mcp
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile-mcp
+          file: Dockerfile-web-search-mcp
           load: true
-          tags: genie-mcp:pr
+          tags: genie-web-search-mcp:pr
           push: false
 
-      - name: Scan genie-mcp
+      - name: Scan genie-web-search-mcp
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: genie-mcp:pr
+          image-ref: genie-web-search-mcp:pr
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Build genie-google-mcp
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile-google-mcp
+          load: true
+          tags: genie-google-mcp:pr
+          push: false
+
+      - name: Scan genie-google-mcp
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: genie-google-mcp:pr
           scanners: vuln,secret
           severity: HIGH,CRITICAL
           exit-code: "1"

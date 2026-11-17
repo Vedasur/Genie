@@ -13,7 +13,8 @@ Genie is a LangGraph research agent (**planner → researcher ⇄ tools → writ
 | Service | Location | Role |
 |---------|----------|------|
 | `api` | `app/` | FastAPI + LangGraph agent, port `8000` |
-| `mcp` | `mcp/` | MCP server exposing `scrape_link` (Firecrawl), port `8080`, streamable HTTP at `/mcp` |
+| `web_search_mcp` | `web_search_mcp/` | MCP server exposing `scrape_link` (Firecrawl), port `8080`, streamable HTTP at `/mcp` |
+| `google_mcp` | `google_mcp/` | MCP server exposing `read_recent_emails` (Gmail readonly), port `8081`; LibreChat only |
 | `librechat` | `librechat/` | Chat UI (Compose service), port `3080` |
 | Langfuse | external | Self-hosted prompt management + tracing (NOT started by Compose) |
 
@@ -36,12 +37,15 @@ Genie/
 │   ├── schemas/                # Pydantic models: AgentState, Plan, TitleOutput, ...
 │   ├── pyproject.toml          # uv project (deps + `dev` group)
 │   └── uv.lock
-├── mcp/                        # MCP service (own pyproject/uv.lock)
-│   └── search_mcp.py
-├── utils/                      # Shared by api + mcp: logger.py, sse.py
+├── web_search_mcp/             # Web search MCP (own pyproject/uv.lock)
+│   └── web_search_mcp.py
+├── google_mcp/                 # Google / Gmail MCP (own pyproject/uv.lock)
+│   ├── google_mcp.py
+│   └── gmail_auth.py
+├── utils/                      # Shared by api + MCP services: logger.py, sse.py
 ├── tests/                      # pytest suite (not maintained by agents, see §10)
 ├── librechat/librechat.yaml
-├── Dockerfile-api, Dockerfile-mcp, docker-compose.yml
+├── Dockerfile-api, Dockerfile-web-search-mcp, Dockerfile-google-mcp, docker-compose.yml
 ├── .github/workflows/build-and-push.yml
 ├── pytest.ini
 ├── README.md                   # Living documentation
@@ -56,8 +60,8 @@ Genie/
   In Docker, `utils/` is copied into `/app/utils/`; in tests, `pytest.ini` sets `pythonpath = app .`.
 - Never add `sys.path` hacks. If a new top-level folder must be importable by the API,
   update **both** `Dockerfile-api` (COPY) and `pytest.ini` (`pythonpath`).
-- `app/` and `mcp/` are **separate uv projects**. Do not import `app/` code from `mcp/` or vice versa;
-  only `utils/` is shared.
+- `app/`, `web_search_mcp/`, and `google_mcp/` are **separate uv projects**. Do not import
+  across them; only `utils/` is shared.
 
 ---
 
@@ -67,7 +71,7 @@ Genie/
 - FastAPI, Uvicorn, LangGraph, LangChain (`langchain-openai`, `langchain-tavily`, `langchain-mcp-adapters`),
   Langfuse SDK, pydantic-settings, loguru.
 - Dependency management is **uv only**. Never add `requirements.txt` or use bare `pip install`.
-  - Add a runtime dep: `cd app && uv add <pkg>` (or `cd mcp && uv add <pkg>`).
+  - Add a runtime dep: `cd app && uv add <pkg>` (or `cd web_search_mcp` / `cd google_mcp && uv add <pkg>`).
   - Add a dev dep: `cd app && uv add --group dev <pkg>`.
   - Always commit the updated `uv.lock`; Docker builds use `uv sync --locked` and fail on a stale lock.
 - Do not introduce LangSmith usage. `langsmith` exists only as a transitive dependency.
@@ -92,13 +96,18 @@ Genie/
 - All configuration goes through `core.config.Settings` (pydantic-settings, `extra="ignore"`).
   Field names map to upper-case env vars (`model_name` → `MODEL_NAME`).
 - Required settings use `Field(..., description=...)`; optional ones have defaults.
-- **Never** hardcode keys, commit `.env`, `mcp/.mcp.env`, or print secrets in logs.
+- **Never** hardcode keys, commit `.env`, `web_search_mcp/.web_search_mcp.env`,
+  `google_mcp/.google_mcp.env`, `google_mcp/credentials.json`, `google_mcp/secrets/token.json`,
+  or print secrets in logs.
 - When adding an env var, update **all** of:
   1. `Settings` in `app/core/config.py` (if the API reads it),
   2. `.env.example` (create it if missing — placeholder values only),
   3. the README "Environment variables" table,
   4. `DEVELOPMENT.md`.
-- MCP service config lives in `mcp/.mcp.env` (`FC_KEY`, `MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`).
+- Web search MCP config lives in `web_search_mcp/.web_search_mcp.env`
+  (`FC_KEY`, `MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`).
+- Google MCP config lives in `google_mcp/.google_mcp.env`
+  (`MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`, `GMAIL_TOKEN_PATH`).
 
 ---
 
@@ -157,13 +166,14 @@ The API must stay **OpenAI Chat Completions compatible** because LibreChat depen
 
 ---
 
-## 9. MCP server (`mcp/`)
+## 9. MCP servers (`web_search_mcp/`, `google_mcp/`)
 
 - Tools are declared with `@mcp.tool()` and use `Annotated[..., Field(description=...)]` parameters
   and a Pydantic return model. Write rich docstrings — the LLM reads them to decide when to call the tool.
 - Reuse clients via `@lru_cache` factories; never create SDK clients per call.
-- Adding a tool there makes it available to the agent automatically (via `MultiServerMCPClient`);
+- Tools on `web_search_mcp` are available to the agent automatically (via `MultiServerMCPClient`);
   add a matching status label in `researcher_node` if it should show a friendly message.
+- `google_mcp` is registered in LibreChat only unless the agent graph is explicitly updated.
 
 ---
 
@@ -181,11 +191,13 @@ The API must stay **OpenAI Chat Completions compatible** because LibreChat depen
 
 ## 11. Docker, Compose & CI
 
-- `docker compose up --build` runs `api`, `mcp`, `librechat`, `librechat-mongo`. Langfuse is external.
-- Inside Compose, the API reaches MCP at `http://mcp:8080/mcp` (not `localhost`).
+- `docker compose up --build` runs `api`, `web_search_mcp`, `google_mcp`, `librechat`, `librechat-mongo`.
+  Langfuse is external. `google_mcp` needs `google_mcp/secrets/token.json` or it fails at startup.
+- Inside Compose, the API reaches web search MCP at `http://web_search_mcp:8080/mcp` (not `localhost`).
+  LibreChat reaches Google MCP at `http://google_mcp:8081/mcp`.
 - API image: `uvicorn main:app` from `/app`. Keep `UV_NO_DEV=1`; dev deps must not ship.
 - CI (`.github/workflows/build-and-push.yml`) runs on `v*` tags: gitleaks secret scan, build + push
-  `genie-api` and `genie-mcp` to GHCR. Do not weaken the secret scan.
+  `genie-api`, `genie-web-search-mcp`, and `genie-google-mcp` to GHCR. Do not weaken the secret scan.
 
 ---
 

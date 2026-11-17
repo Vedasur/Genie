@@ -10,7 +10,7 @@ step (README + DEVELOPMENT.md) applies to every skill and is not repeated in ful
 | 2 | [Run & verify locally](#2-run--verify-locally) | Need to test changes end-to-end |
 | 3 | [Run the test suite](#3-run-the-test-suite) | **Only if the user explicitly asks** |
 | 4 | [Add an agent tool (in-process)](#4-add-an-agent-tool-in-process) | New LangChain tool for the researcher |
-| 5 | [Add an MCP tool](#5-add-an-mcp-tool) | New tool served by the `mcp` service |
+| 5 | [Add an MCP tool](#5-add-an-mcp-tool) | New tool served by `web_search_mcp` or `google_mcp` |
 | 6 | [Add or change a graph node](#6-add-or-change-a-graph-node) | Changing agent flow |
 | 7 | [Change a prompt / prompt variables](#7-change-a-prompt--prompt-variables) | Editing Langfuse prompts or their inputs |
 | 8 | [Add an environment variable](#8-add-an-environment-variable) | New config / secret |
@@ -34,7 +34,8 @@ step (README + DEVELOPMENT.md) applies to every skill and is not repeated in ful
    - prompts & tracing → `app/core/langfuse_client.py`
    - settings → `app/core/config.py`
    - startup wiring → `app/main.py`
-   - scraping tool → `mcp/search_mcp.py`
+   - scraping tool → `web_search_mcp/web_search_mcp.py`
+   - Gmail tool → `google_mcp/google_mcp.py`
 4. Check `git status` so you don't overwrite the user's uncommitted work.
 
 ---
@@ -47,10 +48,13 @@ step (README + DEVELOPMENT.md) applies to every skill and is not repeated in ful
 docker compose up --build
 ```
 
-- API: `http://localhost:8000` (docs at `/docs`), LibreChat: `http://localhost:3080`, MCP: `http://localhost:8080/mcp`.
-- Requires `.env` (API + LibreChat) and `mcp/.mcp.env` (`FC_KEY`), plus reachable Langfuse with the three chat prompts.
+- API: `http://localhost:8000` (docs at `/docs`), LibreChat: `http://localhost:3080`,
+  web search MCP: `http://localhost:8080/mcp`, Google MCP: `http://localhost:8081/mcp`.
+- Requires `.env` (API + LibreChat), `web_search_mcp/.web_search_mcp.env` (`FC_KEY`),
+  and for Gmail: `google_mcp/.google_mcp.env` plus `google_mcp/secrets/token.json`,
+  plus reachable Langfuse with the chat prompts.
 
-**API only, outside Docker** (MCP must be running and `MCP_SERVER_URL=http://localhost:8080/mcp`):
+**API only, outside Docker** (web search MCP must be running and `MCP_SERVER_URL=http://localhost:8080/mcp`):
 
 ```bash
 cd app
@@ -124,7 +128,9 @@ Done when: the tool never raises for expected failures and README lists the tool
 
 Use for heavier tools or ones with their own secrets/dependencies.
 
-1. In `mcp/search_mcp.py` add:
+1. Choose the server: scraping/research → `web_search_mcp/web_search_mcp.py`;
+   Google/Gmail → `google_mcp/google_mcp.py` (LibreChat-only unless you also wire the agent).
+2. Add:
 
    ```python
    class MyResult(BaseModel):
@@ -138,13 +144,15 @@ Use for heavier tools or ones with their own secrets/dependencies.
        ...
    ```
 
-2. Reuse SDK clients through an `@lru_cache(maxsize=1)` factory.
-3. New deps: `cd mcp && uv add <pkg>`; new env vars go in `mcp/.mcp.env` (document them).
-4. The API picks the tool up automatically through `MultiServerMCPClient` at graph build time —
-   restart the `api` container after `mcp` changes (tools are fetched once on startup).
-5. Add a friendly status label in `researcher_node` for the new tool name.
+3. Reuse SDK clients through an `@lru_cache(maxsize=1)` factory.
+4. New deps: `cd web_search_mcp && uv add <pkg>` (or `cd google_mcp`); new env vars go in the
+   matching `.*.env` file (document them).
+5. Tools on `web_search_mcp` are picked up by the API through `MultiServerMCPClient` at graph
+   build time — restart `api` after MCP changes. Tools on `google_mcp` need a LibreChat
+   `mcpServers` entry (already present for Gmail).
+6. For agent-facing tools, add a friendly status label in `researcher_node`.
 
-Done when: `docker compose up --build` shows the tool being called in a streamed request.
+Done when: `docker compose up --build` shows the tool being called (agent stream or LibreChat).
 
 ---
 
@@ -184,7 +192,8 @@ Done when: startup succeeds (no `LangfusePromptError`) and traces show the linke
 1. Add the field to `Settings` (`app/core/config.py`): required → `Field(..., description=...)`, optional → default value.
 2. Add a placeholder to `.env.example` (create the file if it doesn't exist; never real values).
 3. Add a row to the README "Environment variables" table.
-4. For MCP-only variables, use `os.environ.get(...)` in `mcp/search_mcp.py`, fail fast if required, and document in `mcp/.mcp.env` notes.
+4. For MCP-only variables, use `os.environ.get(...)` in the relevant `*_mcp.py`, fail fast if
+   required, and document in `web_search_mcp/.web_search_mcp.env` or `google_mcp/.google_mcp.env`.
 5. Log it in `DEVELOPMENT.md` (breaking change if required for startup).
 
 ---
@@ -216,7 +225,7 @@ Done when: startup succeeds (no `LangfusePromptError`) and traces show the linke
 Follow evidence, don't guess.
 
 1. Reproduce with the curl commands from [skill 2](#2-run--verify-locally) (try both streaming and non-streaming).
-2. Read logs: `docker compose logs -f api` (and `mcp`). Errors are logged with the completion id `[chatcmpl-...]`.
+2. Read logs: `docker compose logs -f api` (and `web_search_mcp` / `google_mcp`). Errors are logged with the completion id `[chatcmpl-...]`.
 3. Open the matching Langfuse trace (filter by `completion_id` metadata) to see which node/tool failed and its inputs.
 4. Common causes:
    | Symptom | Likely cause |
@@ -224,8 +233,9 @@ Follow evidence, don't guess.
    | API fails at startup with `LangfusePromptError` | Prompt missing, not `chat` type, or Langfuse unreachable / wrong keys |
    | `'str' object has no attribute 'get'` in tools | External API returned an error string; normalize the payload |
    | `Search failed: ...` in research notes | Invalid/missing `TAVILY_API_KEY` |
-   | MCP connection errors at startup | `mcp` not running or `MCP_SERVER_URL` wrong (`http://mcp:8080/mcp` in Compose) |
+   | MCP connection errors at startup | `web_search_mcp` not running or `MCP_SERVER_URL` wrong (`http://web_search_mcp:8080/mcp` in Compose) |
    | `scrape_link` errors | Missing/invalid `FC_KEY`, or page has no content |
+   | `google_mcp` exits on start | Missing `google_mcp/secrets/token.json` — run `gmail_auth.py` |
    | Stream shows status but no answer | Answer node renamed without updating `ANSWER_NODE` |
    | 400 "No user message found" | Request has no `role: "user"` message |
 5. Fix the root cause directly, then re-run the same request to confirm it works.
@@ -235,7 +245,7 @@ Follow evidence, don't guess.
 ## 11. Add or update a dependency
 
 ```bash
-cd app   # or: cd mcp
+cd app   # or: cd web_search_mcp / cd google_mcp
 uv add <package>              # runtime
 uv add --group dev <package>  # tests/tooling only
 uv lock --upgrade-package <package>  # bump a single package
@@ -283,7 +293,7 @@ At the end of every task:
 ## 14. Release
 
 1. Ensure `DEVELOPMENT.md` has entries for everything going out.
-2. Bump `version` in `app/pyproject.toml` (and `mcp/pyproject.toml` if changed).
+2. Bump `version` in `app/pyproject.toml` (and the relevant MCP `pyproject.toml` if changed).
 3. Tag and push (only with the user's approval):
 
    ```bash
@@ -291,5 +301,6 @@ At the end of every task:
    git push origin v0.x.y
    ```
 
-4. The `Build, Scan, Publish, and Deploy` workflow scans for secrets and pushes `genie-api` and `genie-mcp` images to GHCR.
+4. The `Build, Scan, Publish, and Deploy` workflow scans for secrets and pushes
+   `genie-api`, `genie-web-search-mcp`, and `genie-google-mcp` images to GHCR.
 5. After deploy, run the smoke tests from [skill 2](#2-run--verify-locally) against the deployed URL.

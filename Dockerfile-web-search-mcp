@@ -18,10 +18,10 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Copy application
-COPY mcp/ .
+COPY web_search_mcp/ .
 COPY utils/ ./utils/
 RUN uv sync --locked
 
 EXPOSE 8080
 
-CMD ["uv", "run", "python", "-u", "search_mcp.py"]
+CMD ["uv", "run", "python", "-u", "web_search_mcp.py"]
