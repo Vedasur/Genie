@@ -47,13 +47,20 @@ class EmailMessage(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_gmail_service():
-    """Reuse a single Gmail API client; refresh and persist the token when needed."""
+    """Reuse a single Gmail API client; refresh the token and persist it when the mount is writable."""
     creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        with open(TOKEN_PATH, "w", encoding="utf-8") as f:
-            f.write(creds.to_json())
         logger.info("Refreshed Gmail OAuth token")
+        try:
+            with open(TOKEN_PATH, "w", encoding="utf-8") as f:
+                f.write(creds.to_json())
+        except OSError as exc:
+            logger.warning(
+                "Token path {} not writable ({}); keeping refreshed token in memory",
+                TOKEN_PATH,
+                exc,
+            )
     return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
@@ -120,7 +127,7 @@ def read_recent_emails(
             .execute()
         )
     except Exception:
-        logger.exception("Gmail messages.list failed for query=%s", query)
+        logger.exception("Gmail messages.list failed for query={}", query)
         raise
 
     messages = listing.get("messages") or []
@@ -137,7 +144,7 @@ def read_recent_emails(
                 .execute()
             )
         except Exception:
-            logger.exception("Gmail messages.get failed for id=%s", item.get("id"))
+            logger.exception("Gmail messages.get failed for id={}", item.get("id"))
             raise
 
         headers = msg.get("payload", {}).get("headers", [])

@@ -223,6 +223,11 @@ agent graph does **not** call it.
 
    This writes `google_mcp/secrets/token.json`, which Compose mounts at `/secrets/token.json`.
 
+On startup the service loads the token from `GMAIL_TOKEN_PATH`. When the access token
+expires it is refreshed in memory; if the mount is writable (local Compose volume) the
+updated JSON is written back. On a read-only Kubernetes Secret mount, persistence is
+skipped and the refreshed credentials stay in process memory until the next pod restart.
+
 While the consent screen is in **Testing**, Google may expire the refresh token after 7 days;
 re-run `gmail_auth.py`, or set the app to **In production** for personal use (unverified-app warning is expected).
 
