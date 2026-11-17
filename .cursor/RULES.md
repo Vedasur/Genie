@@ -40,8 +40,7 @@ Genie/
 ├── web_search_mcp/             # Web search MCP (own pyproject/uv.lock)
 │   └── web_search_mcp.py
 ├── google_mcp/                 # Google / Gmail MCP (own pyproject/uv.lock)
-│   ├── google_mcp.py
-│   └── gmail_auth.py
+│   └── google_mcp.py
 ├── utils/                      # Shared by api + MCP services: logger.py, sse.py
 ├── tests/                      # pytest suite (not maintained by agents, see §10)
 ├── librechat/librechat.yaml
@@ -97,8 +96,7 @@ Genie/
   Field names map to upper-case env vars (`model_name` → `MODEL_NAME`).
 - Required settings use `Field(..., description=...)`; optional ones have defaults.
 - **Never** hardcode keys, commit `.env`, `web_search_mcp/.web_search_mcp.env`,
-  `google_mcp/.google_mcp.env`, `google_mcp/credentials.json`, `google_mcp/secrets/token.json`,
-  or print secrets in logs.
+  `google_mcp/.google_mcp.env`, `google_mcp/credentials.json`, or print secrets in logs.
 - When adding an env var, update **all** of:
   1. `Settings` in `app/core/config.py` (if the API reads it),
   2. `.env.example` (create it if missing — placeholder values only),
@@ -106,8 +104,10 @@ Genie/
   4. `DEVELOPMENT.md`.
 - Web search MCP config lives in `web_search_mcp/.web_search_mcp.env`
   (`FC_KEY`, `MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`).
-- Google MCP config lives in `google_mcp/.google_mcp.env`
-  (`MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`, `GMAIL_TOKEN_PATH`).
+- Google MCP runtime config lives in `google_mcp/.google_mcp.env`
+  (`MCP_HOST`, `MCP_PORT`, `SERVICE_VERSION`). Per-user Gmail OAuth client credentials
+  for LibreChat live in the root `.env`: `GOOGLE_MCP_CLIENT_ID`,
+  `GOOGLE_MCP_CLIENT_SECRET`, `GOOGLE_MCP_REDIRECT_URI`.
 
 ---
 
@@ -192,7 +192,9 @@ The API must stay **OpenAI Chat Completions compatible** because LibreChat depen
 ## 11. Docker, Compose & CI
 
 - `docker compose up --build` runs `api`, `web_search_mcp`, `google_mcp`, `librechat`, `librechat-mongo`.
-  Langfuse is external. `google_mcp` needs `google_mcp/secrets/token.json` or it fails at startup.
+  Langfuse is external. Gmail requires LibreChat MCP OAuth (`GOOGLE_MCP_*` in `.env`); users
+  click Connect in the UI. `google_mcp` reads the Bearer token from each request and does not
+  store tokens on disk.
 - Inside Compose, the API reaches web search MCP at `http://web_search_mcp:8080/mcp` (not `localhost`).
   LibreChat reaches Google MCP at `http://google_mcp:8081/mcp`.
 - API image: `uvicorn main:app` from `/app`. Keep `UV_NO_DEV=1`; dev deps must not ship.

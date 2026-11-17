@@ -102,7 +102,8 @@ Genie/
 
 - Docker & Docker Compose
 - API keys: OpenAI (or your LLM provider), Tavily, Firecrawl (`FC_KEY` for `web_search_mcp`)
-- For Gmail tools: Google Cloud OAuth Desktop client + a local `google_mcp/secrets/token.json`
+- For Gmail tools: a Google Cloud OAuth **Web application** client and the LibreChat env vars
+  `GOOGLE_MCP_CLIENT_ID`, `GOOGLE_MCP_CLIENT_SECRET`, `GOOGLE_MCP_REDIRECT_URI`
   (see [Google MCP (Gmail)](#google-mcp-gmail))
 - Access to a self-hosted Langfuse project (public key, secret key, base URL)
 - In Langfuse, create **chat** prompts named exactly:
@@ -183,6 +184,9 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | `LANGFUSE_SECRET_KEY` | yes | Langfuse project secret key |
 | `LANGFUSE_BASE_URL` | yes | Self-hosted Langfuse API base URL |
 | `LANGFUSE_TRACING_ENVIRONMENT` | no | Langfuse environment on every trace (default `default`; e.g. `live-prod`). Lowercase letters, digits, `-`, `_`; must not start with `langfuse` |
+| `GOOGLE_MCP_CLIENT_ID` | yes (LibreChat + Gmail) | Google OAuth Web client id for LibreChat MCP OAuth |
+| `GOOGLE_MCP_CLIENT_SECRET` | yes (LibreChat + Gmail) | Google OAuth Web client secret |
+| `GOOGLE_MCP_REDIRECT_URI` | yes (LibreChat + Gmail) | Must match a registered redirect URI; local default `http://localhost:3080/api/mcp/google_mcp/oauth/callback` |
 
 `LANGSMITH_API_KEY` is no longer used. LangSmith may still appear transitively via LangChain.
 
@@ -191,15 +195,21 @@ Documented fully in [`.env.example`](.env.example). Genie-specific variables:
 | File | Variables |
 |------|-----------|
 | `web_search_mcp/.web_search_mcp.env` | `FC_KEY` (required), `MCP_HOST`, `MCP_PORT` (default `8080`), `SERVICE_VERSION` |
-| `google_mcp/.google_mcp.env` | `MCP_HOST`, `MCP_PORT` (default `8081`), `SERVICE_VERSION`, `GMAIL_TOKEN_PATH` (default `/secrets/token.json`) |
+| `google_mcp/.google_mcp.env` | `MCP_HOST`, `MCP_PORT` (default `8081`), `SERVICE_VERSION` |
 
 Copy `google_mcp/.google_mcp.env.example` to `google_mcp/.google_mcp.env` for local Compose.
+Gmail OAuth client credentials belong in the root `.env` (read by LibreChat), not in `google_mcp/.google_mcp.env`.
 
 ## Google MCP (Gmail)
 
 `google_mcp` is an independent MCP server (port **8081**) with a single read-only tool.
 LibreChat registers it in [`librechat/librechat.yaml`](librechat/librechat.yaml); the Genie
 agent graph does **not** call it.
+
+Each LibreChat user connects their own Gmail through LibreChat's MCP OAuth flow. LibreChat
+stores and refreshes that user's tokens and sends `Authorization: Bearer <access_token>` on
+every MCP request. `google_mcp` is stateless: it builds a Gmail client from that Bearer token
+and never persists credentials on disk.
 
 ### Tool
 
@@ -210,26 +220,26 @@ agent graph does **not** call it.
 ### One-time Google Cloud setup
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create/select a project and enable the **Gmail API**.
-2. Configure the **OAuth consent screen** (External). Add yourself as a test user.
+2. Configure the **OAuth consent screen** (External). Add each person who will connect Gmail as a test user.
    Scope used: `https://www.googleapis.com/auth/gmail.readonly`.
-3. Create credentials → **OAuth client ID** → application type **Desktop app**.
-   Download the JSON and save it as `google_mcp/credentials.json` (gitignored).
-4. On your machine (opens a browser; do not run inside Docker):
+3. Create credentials → **OAuth client ID** → application type **Web application** (not Desktop).
+4. Under **Authorized redirect URIs**, add:
+   - Local: `http://localhost:3080/api/mcp/google_mcp/oauth/callback`
+   - Production: `https://genie.gorgone.app/api/mcp/google_mcp/oauth/callback`
+5. Put the client id/secret and redirect URI in the root `.env` (see `GOOGLE_MCP_*` above).
+   LibreChat expands `${GOOGLE_MCP_CLIENT_ID}` / `${GOOGLE_MCP_CLIENT_SECRET}` /
+   `${GOOGLE_MCP_REDIRECT_URI}` from [`librechat/librechat.yaml`](librechat/librechat.yaml).
 
-   ```bash
-   cd google_mcp
-   uv run python gmail_auth.py
-   ```
+### Connect Gmail in LibreChat
 
-   This writes `google_mcp/secrets/token.json`, which Compose mounts at `/secrets/token.json`.
+1. Open LibreChat, open the MCP / tools menu, select `google_mcp`, and click **Connect**.
+2. Complete Google consent. LibreChat stores the tokens per user.
+3. Ask the agent about recent inbox mail; `read_recent_emails` runs with that user's token.
 
-On startup the service loads the token from `GMAIL_TOKEN_PATH`. When the access token
-expires it is refreshed in memory; if the mount is writable (local Compose volume) the
-updated JSON is written back. On a read-only Kubernetes Secret mount, persistence is
-skipped and the refreshed credentials stay in process memory until the next pod restart.
-
-While the consent screen is in **Testing**, Google may expire the refresh token after 7 days;
-re-run `gmail_auth.py`, or set the app to **In production** for personal use (unverified-app warning is expected).
+While the consent screen is in **Testing**, Google may expire refresh tokens after 7 days —
+users click Connect again, or set the app to **In production** for personal use (unverified-app
+warning is expected). Apply the same `google_mcp` OAuth block in any external GitOps LibreChat
+config used in production.
 
 ## API endpoints
 

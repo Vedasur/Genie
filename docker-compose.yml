@@ -28,10 +28,7 @@ services:
     env_file:
       - ./google_mcp/.google_mcp.env
     environment:
-      GMAIL_TOKEN_PATH: /secrets/token.json
       MCP_PORT: "8081"
-    volumes:
-      - ./google_mcp/secrets:/secrets
     container_name: google_mcp_server
 
   librechat:

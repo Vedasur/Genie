@@ -61,9 +61,20 @@ mcpServers:
     type: streamable-http
     url: http://google_mcp:8081/mcp
     timeout: 60000
-    initTimeout: 15000
+    initTimeout: 150000
     serverInstructions: true
     chatMenu: true
+    requiresOAuth: true
+    startup: false
+    oauth:
+      authorization_url: 'https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent'
+      token_url: 'https://oauth2.googleapis.com/token'
+      client_id: '${GOOGLE_MCP_CLIENT_ID}'
+      client_secret: '${GOOGLE_MCP_CLIENT_SECRET}'
+      scope: 'https://www.googleapis.com/auth/gmail.readonly'
+      redirect_uri: '${GOOGLE_MCP_REDIRECT_URI}'
+      token_exchange_method: default_post
+      token_endpoint_auth_methods_supported: ['client_secret_post']
 
 
 modelSpecs:
